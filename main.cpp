@@ -167,6 +167,98 @@ private:
     // 绘制色差曲线 (模拟题目给出的纵轴波长、横轴焦距偏移)
     void drawDispersionCurve(QPainter &p)
     {
+        int w = width();
+        int h = height();
+
+        // 1. 定义图形区域的边距
+        int marginLeft = 80;    // 左侧留出空间写波长数值
+        int marginBottom = 60;  // 底部留出空间写偏移数值
+        int marginTop = 40;
+        int marginRight = 40;
+
+        int graphW = w - marginLeft - marginRight;
+        int graphH = h - marginTop - marginBottom;
+
+        // 2. 设置坐标范围
+        double lamMin = 0.486;    // F线波长
+        double lamMax = 0.6563;   // C线波长
+        double shiftRange = 1000.0; // 横轴范围设为 +/- 1000 um (即 10e2)
+
+        // 绘制坐标轴线
+        p.setPen(Qt::black);
+        // 横轴 (底部)
+        p.drawLine(marginLeft, h - marginBottom, w - marginRight, h - marginBottom);
+        // 纵轴 (左侧)
+        p.drawLine(marginLeft, h - marginBottom, marginLeft, marginTop);
+        // 零位参考线 (中央垂直黑线)
+        int centerX = marginLeft + graphW / 2;
+        p.drawLine(centerX, h - marginBottom, centerX, marginTop);
+
+        // --- 3. 绘制 Y 轴刻度与数值 (波长 Wavelength) ---
+        p.setFont(QFont("Arial", 8));
+        double yTicks[] = {0.486, 0.52, 0.56, 0.60, 0.64, 0.6563};
+        for (double lam : yTicks) {
+            // 计算像素位置：底部是最小波长，顶部是最大波长
+            int y = h - marginBottom - (int)((lam - lamMin) / (lamMax - lamMin) * graphH);
+
+            // 画刻度线
+            p.drawLine(marginLeft, y, marginLeft - 5, y);
+            // 画数值
+            p.drawText(marginLeft - 50, y + 5, QString::number(lam, 'f', 4));
+        }
+        // Y轴标题
+        p.save();
+        p.translate(marginLeft - 60, h / 2);
+        p.rotate(-90);
+        p.drawText(0, 0, "Wavelength in um");
+        p.restore();
+
+        // --- 4. 绘制 X 轴刻度与数值 (焦距偏移 Focal Shift) ---
+        // 从 -1000 到 1000 每 200 一个刻度
+        for (int s = -1000; s <= 1000; s += 200) {
+            int x = centerX + (int)((s / shiftRange) * (graphW / 2.0));
+
+            // 只画区域内的刻度
+            if (x >= marginLeft && x <= w - marginRight) {
+                p.drawLine(x, h - marginBottom, x, h - marginBottom + 5);
+
+                // 格式化文本，模仿图片中的 -10e2, -800.0 等
+                QString label;
+                if (abs(s) == 1000) label = QString::number(s/100) + "e2";
+                else label = QString::number((double)s, 'f', 1);
+
+                p.drawText(x - 20, h - marginBottom + 20, label);
+            }
+        }
+        // X轴标题
+        p.drawText(centerX - 50, h - 10, "Focal Shift in um");
+
+        // --- 5. 绘制色差曲线 (核心曲线) ---
+        p.setPen(QPen(Qt::blue, 1.5));
+        double f_ref = math_algorithm::calculate(R1, R2, d, nd, L_obj).f_prime;
+
+        QPointF lastPt;
+        bool first = true;
+        for (int i = 0; i <= 100; ++i) {
+            double lam = lamMin + i * (lamMax - lamMin) / 100.0;
+            double n_lam = math_algorithm::calculateN(nd, vd, lam);
+            double f_lam = math_algorithm::calculate(R1, R2, d, n_lam, L_obj).f_prime;
+
+            // 计算物理偏移量 (转换为微米 um)
+            double shift_um = (f_lam - f_ref) * 1000.0;
+
+            // 转换为像素坐标
+            int px = centerX + (int)((shift_um / shiftRange) * (graphW / 2.0));
+            int py = h - marginBottom - (int)((lam - lamMin) / (lamMax - lamMin) * graphH);
+
+            // 只绘制在图形区域内的点
+            if (px >= marginLeft && px <= w - marginRight) {
+                if (!first) p.drawLine(lastPt, QPointF(px, py));
+                lastPt = QPointF(px, py);
+                first = false;
+            }
+        }
+        /*
         int w = width(), h = height();
         int margin = 60;
         p.translate(w/2, h - margin); // 中心参考点
@@ -186,7 +278,8 @@ private:
         bool first = true;
 
         // 遍历波长范围 0.486 (F) 到 0.656 (C)
-        for (int i = 0; i <= 100; ++i) {
+        for (int i = 0; i <= 100; ++i)
+        {
             double lam = 0.486 + i * (0.6563 - 0.486) / 100.0;
             double n_lam = math_algorithm::calculateN(nd, vd, lam);
             double f_lam = math_algorithm::calculate(R1, R2, d, n_lam, L_obj).f_prime;
@@ -198,7 +291,9 @@ private:
             if (!first) p.drawLine(lastPt, QPointF(x, y));
             lastPt = QPointF(x, y);
             first = false;
-        }
+
+         }
+        */
     }
 };
 
@@ -276,6 +371,70 @@ public:
             canvas->show_switch = !canvas->show_switch;
             canvas->update();
         });
+        //美化部分
+        this->setStyleSheet(R"(
+                /* 窗口整体背景 */
+                QMainWindow {
+                    background-color: #f5f7fa;
+                }
+
+                /* 输入框美化 */
+                QLineEdit
+                {
+                    border: 2px solid #dcdfe6;
+                    border-radius: 6px;
+                    padding: 5px 10px;
+                    background: white;
+                    selection-background-color: #409eff;
+                    font-size: 14px;
+                }
+                QLineEdit:focus {
+                    border: 2px solid #409eff; /* 获得焦点时变蓝 */
+                }
+
+                /* 按钮美化 */
+                QPushButton {
+                    background-color: #409eff;
+                    color: white;
+                    border-radius: 6px;
+                    padding: 8px 15px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #66b1ff; /* 鼠标悬停变浅 */
+                }
+                QPushButton:pressed {
+                    background-color: #3a8ee6; /* 点击时变深 */
+                }
+
+                /* 切换按钮（特殊颜色） */
+                QPushButton#btnMode {
+                    background-color: #67c23a; /* 绿色 */
+                }
+                QPushButton#btnMode:hover {
+                    background-color: #85ce61;
+                }
+
+                /* 标签美化 */
+                QLabel {
+                    font-family: "Microsoft YaHei";
+                    font-size: 13px;
+                    color: #606266;
+                }
+
+                /* 结果显示区域（通过 ObjectName 特殊处理） */
+                QLabel#resLabel {
+                    background-color: #ecf5ff;
+                    border: 1px solid #d9ecff;
+                    border-radius: 4px;
+                    padding: 10px;
+                    color: #409eff;
+                    font-family: "Consolas", "Courier New"; /* 使用等宽字体显示数据 */
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+            )");
     }
 
 private:
